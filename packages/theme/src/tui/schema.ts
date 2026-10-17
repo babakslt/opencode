@@ -160,6 +160,14 @@ export type MarkdownToken = Schema.Schema.Type<typeof MarkdownToken>
 export const MarkdownDefinition = Schema.Record(MarkdownToken, Schema.optionalKey(HueColorValue))
 export type MarkdownDefinition = Schema.Schema.Type<typeof MarkdownDefinition>
 
+const MarkerDefinition = Schema.Struct({
+  prompt: Schema.optional(ColorValue),
+  thinking: Schema.optional(ColorValue),
+  tool: Schema.optional(ColorValue),
+  response: Schema.optional(ColorValue),
+})
+export type MarkerDefinition = Schema.Schema.Type<typeof MarkerDefinition>
+
 const DiffDefinition = Schema.Struct({
   text: Schema.optional(
     Schema.Struct({
@@ -195,6 +203,7 @@ const ThemeTokensDefinition = Schema.Struct({
   background: Schema.optional(BackgroundDefinition),
   border: Schema.optional(Schema.Struct({ base: Schema.optional(ColorValue) })),
   scrollbar: Schema.optional(Schema.Struct({ base: Schema.optional(ColorValue) })),
+  marker: Schema.optional(MarkerDefinition),
   diff: Schema.optional(DiffDefinition),
   syntax: Schema.optional(SyntaxDefinition),
   markdown: Schema.optional(MarkdownDefinition),
@@ -247,6 +256,12 @@ const CompleteThemeTokensDefinition = Schema.Struct({
   }),
   border: Schema.Struct({ base: ColorValue }),
   scrollbar: Schema.Struct({ base: ColorValue }),
+  marker: Schema.Struct({
+    prompt: ColorValue,
+    thinking: ColorValue,
+    tool: ColorValue,
+    response: ColorValue,
+  }),
   diff: Schema.Struct({
     text: Schema.Struct({ added: ColorValue, removed: ColorValue, context: ColorValue, hunkHeader: ColorValue }),
     background: Schema.Struct({ added: ColorValue, removed: ColorValue, context: ColorValue }),

@@ -26,6 +26,9 @@ export function createComponentTheme(
     get scrollbar() {
       return view().scrollbar
     },
+    get marker() {
+      return view().marker
+    },
     get diff() {
       return view().diff
     },

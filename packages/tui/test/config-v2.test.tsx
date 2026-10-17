@@ -114,6 +114,21 @@ test("shows the TPS default in session settings", () => {
   expect(setting?.default).toBe(true)
 })
 
+test("validates and exposes the scrollbar markers setting", () => {
+  expect(decodeInfo({ session: {} })).toEqual({ session: {} })
+  expect(decodeInfo({ session: { scrollbar_markers: true } })).toEqual({ session: { scrollbar_markers: true } })
+  expect(decodeInfo({ session: { scrollbar_markers: false } })).toEqual({ session: { scrollbar_markers: false } })
+  expect(() => decodeInfo({ session: { scrollbar_markers: "on" } })).toThrow()
+
+  const setting = settings.find((setting) => setting.path.join(".") === "session.scrollbar_markers")
+  expect(setting).toMatchObject({
+    category: "Session",
+    path: ["session", "scrollbar_markers"],
+    default: false,
+    values: [false, true],
+  })
+})
+
 test("shows transcript verbosity in session settings", () => {
   expect(settings.find((setting) => setting.path.join(".") === "session.verbosity")).toMatchObject({
     category: "Session",

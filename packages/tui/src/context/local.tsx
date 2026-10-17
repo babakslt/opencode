@@ -125,12 +125,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             this.set(value.id)
           })
         },
+        /** The accent colour the agent itself defines, or undefined when it defines none. */
+        accent(id: string) {
+          const defined = visibleAgents().find((agent) => agent.id === id)?.color
+          return defined ? RGBA.fromHex(defined) : undefined
+        },
         color(id: string) {
+          const accent = this.accent(id)
+          if (accent) return accent
           const index = visibleAgents().findIndex((agent) => agent.id === id)
           if (index === -1) return colors()[0]
-          const agent = visibleAgents()[index]
-
-          if (agent?.color) return RGBA.fromHex(agent.color)
           return colors()[index % colors().length]
         },
       }

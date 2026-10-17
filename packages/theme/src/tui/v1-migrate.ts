@@ -167,6 +167,12 @@ function migrateMode(theme: Theme, mode: Mode): ThemeDefinition {
     },
     border: { base: color("border") },
     scrollbar: { base: color("borderActive") },
+    marker: {
+      prompt: "$hue.accent.200",
+      thinking: color("warning"),
+      tool: color("info"),
+      response: "$hue.neutral.600",
+    },
     diff: {
       text: {
         added: color("diffAdded"),

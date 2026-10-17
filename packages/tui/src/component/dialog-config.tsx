@@ -61,6 +61,15 @@ export const settings: Setting[] = [
     keywords: ["scroll bar"],
   },
   {
+    title: "Scrollbar markers",
+    category: "Session",
+    path: ["session", "scrollbar_markers"],
+    default: false,
+    values: [false, true],
+    labels: ["off", "on"],
+    keywords: ["timeline", "marks", "navigator"],
+  },
+  {
     title: "Thinking",
     category: "Session",
     path: ["session", "thinking"],

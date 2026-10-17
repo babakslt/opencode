@@ -123,11 +123,19 @@ import { isRecord } from "../../util/record"
 import { createHistoryPrepend } from "./history"
 import { context, use, type PendingAction } from "./render-context"
 import { INLINE_TOOL_ICON_WIDTH, InlineToolRow, ReasoningPart, TextPart, toolDisplay } from "./message-parts"
-import { defaultVerbosity, type GroupKind, type SessionEntry } from "./grouping/session"
+import { defaultVerbosity, groupRefs, type GroupKind, type SessionEntry } from "./grouping/session"
 import { SessionGroupView } from "./group-view"
 import { useEntryAnchor } from "./anchor-view"
-import { containsAnchor, createTimelineAnchors, groupID } from "./anchors"
+import { containsAnchor, createTimelineAnchors, groupID, rowAnchorTarget } from "./anchors"
 import { rowsAfter, rowsBefore, rowWeight } from "./mount-budget"
+import {
+  buildMarkerBandsWithShares,
+  markerAnchorRow,
+  markerColor,
+  rowMarkerKind,
+  rowMarkerWeightDeep,
+} from "./markers"
+import { ScrollbarMarkers } from "./scrollbar-markers"
 export { InlineToolRow } from "./message-parts"
 export { toolDisplay } from "./message-parts"
 
@@ -236,6 +244,7 @@ export function Session(props: {
   const dimensions = useTerminalDimensions()
   const thinkingMode = createMemo<ThinkingMode>(() => config.session?.thinking ?? "hide")
   const showScrollbar = createMemo(() => config.session?.scrollbar ?? false)
+  const showMarkers = createMemo(() => config.session?.scrollbar_markers ?? false)
   const markdownMode = createMemo(() => config.session?.markdown ?? "rendered")
   const diffWrapMode = createMemo(() => config.diffs?.wrap ?? "word")
   const groupExploration = createMemo(() => config.session?.grouping !== "none")
@@ -377,8 +386,8 @@ export function Session(props: {
     prependHistory.cancel()
     firstJump()?.()
     if (!scroll || scroll.isDestroyed) return
-    scroll.verticalScrollBar.off("change", updateAwayFromBottom)
-    scroll.content.off("resize", holdAnchor)
+    scroll.verticalScrollBar.off("change", onScrollbarChange)
+    scroll.content.off("resize", onContentResize)
     saveScrollAnchor(true)
   })
   const [prompt, setPrompt] = createSignal<PromptRef>()
@@ -423,6 +432,48 @@ export function Session(props: {
       }),
     ),
   )
+
+  // Markers describe the whole transcript, not the mounted window, so their bands come from
+  // every row and are recomputed only when those rows or the scrollbox viewport change.
+  const [markerViewport, setMarkerViewport] = createSignal(0)
+  const refreshMarkers = () => {
+    if (!scroll || scroll.isDestroyed) return
+    setMarkerViewport(Math.max(0, Math.floor(scroll.viewport.height)))
+  }
+  const onScrollbarChange = () => {
+    updateAwayFromBottom()
+    refreshMarkers()
+  }
+  const onContentResize = () => {
+    holdAnchor()
+    refreshMarkers()
+  }
+  const resolveMarkerPart = (ref: PartRef) => {
+    const message = data.session.message.get(route.sessionID, ref.messageID)
+    if (!message) return undefined
+    if (ref.partID === "message") return message
+    return message.type === "assistant" ? resolvePart(message, ref.partID) : undefined
+  }
+  const markerCells = createMemo(() => {
+    const cells = markerViewport()
+    if (!showMarkers() || !showScrollbar() || cells < 2 || rows.length === 0) return []
+    // A kind that is not grouped renders its children inline, so it takes the expanded shape;
+    // the summary line that adds is the estimator's known drift.
+    const expanded = (id: string, kind: GroupKind) => !groupedKind(kind) || groupExpanded(id, kind)
+    const kinds = rows.map((row) => rowMarkerKind(row, resolveMarkerPart))
+    const weights = rows.map((row) => rowMarkerWeightDeep(row, resolveMarkerPart, expanded))
+    return buildMarkerBandsWithShares(weights, kinds, cells)
+  })
+  // Independent of `rows`: the padding only has to change when the column appears or disappears.
+  const showMarkerColumn = createMemo(
+    () => showMarkers() && showScrollbar() && markerViewport() >= 2 && rows.length > 0,
+  )
+  createEffect(() => {
+    // The ref lands before the first layout, so its viewport can still measure 0. Measure again on
+    // a microtask whenever the flag turns on or rows appear: the column must show without a resize.
+    if (!showMarkers() || !showScrollbar() || rows.length === 0) return
+    queueMicrotask(refreshMarkers)
+  })
   const hidden = createMemo(() =>
     Math.min(hiddenRows() ?? Infinity, rowsBefore(weights(), rows.length, TRANSCRIPT_TAIL_ROWS)),
   )
@@ -486,6 +537,9 @@ export function Session(props: {
     })
     return true
   }
+  // A marker jump mounts only a window around its target; the flag keeps the away-from-bottom
+  // bookkeeping from clearing that window before the target has been aligned.
+  let revealingMarkers = false
   /** Message navigation needs the full transcript mounted before walking or jumping. */
   const ensureAllRows = (continuation: () => void) => {
     if (firstJump()) clearMessageNavigation()
@@ -509,6 +563,7 @@ export function Session(props: {
     if (
       revealingOlderRows ||
       revealingNewerRows ||
+      revealingMarkers ||
       ensureAllRowsPending ||
       navigationMessage() ||
       navigationSlack() ||
@@ -519,7 +574,8 @@ export function Session(props: {
     return scroll.scrollTop < Math.max(0, scroll.scrollHeight - scroll.viewport.height)
   }
   function updateAwayFromBottom() {
-    const preserveWindow = revealingOlderRows || revealingNewerRows || !!ensureAllRowsPending || !!firstJump()
+    const preserveWindow =
+      revealingOlderRows || revealingNewerRows || revealingMarkers || !!ensureAllRowsPending || !!firstJump()
     if (isAwayFromBottom()) setHiddenRows((current) => current ?? hidden())
     if (awayTimer) clearTimeout(awayTimer)
     awayTimer = setTimeout(() => {
@@ -694,7 +750,7 @@ export function Session(props: {
         footerHints={[{ title: "steer", label: "enter", group: "primary" }]}
       />
     ))
-  const alignMessage = (messageID: string, top: number) => {
+  const alignMessage = (messageID: string | undefined, top: number) => {
     scroll.stickyScroll = false
     setNavigationMessage(messageID)
     updateAwayFromBottom()
@@ -744,6 +800,55 @@ export function Session(props: {
       const message = data.session.message.get(route.sessionID, messageID)
       alignMessage(messageID, Math.max(0, y - (message?.type === "assistant" ? 1 : 0)))
     })
+
+  /**
+   * Marker clicks name a band. Its row already is the row that produced the band's primary kind, so
+   * the click lands on what it coloured. If that row is mounted, align it; otherwise mount a bounded
+   * window around it (never the whole transcript) and align the nearest anchored row inside that
+   * window — its own, else above, else below; only mounted rows are anchored, so the walk stays in
+   * it. When nothing is anchored, scroll proportionally instead — the click is never a silent no-op.
+   */
+  const jumpToRow = (band: number) => {
+    const cells = markerCells()
+    const cell = cells[band]
+    if (!cell) return
+    const align = () => {
+      const index = markerAnchorRow(rows, cell.row, (row) => {
+        const target = rowAnchorTarget(row)
+        return !!target && !!anchors.get(target)
+      })
+      if (index === undefined) {
+        scroll.scrollTo((band / Math.max(1, cells.length)) * Math.max(0, scroll.scrollHeight - scroll.viewport.height))
+        return
+      }
+      const row = rows[index]
+      const target = rowAnchorTarget(row)
+      const anchor = target && anchors.get(target)
+      if (!target || !anchor) return
+      const y = scroll.scrollTop + anchor.node.y - scroll.viewport.y
+      const messageID =
+        target.type === "part"
+          ? target.ref.messageID
+          : row.type === "group"
+            ? groupRefs(row)[0]?.messageID
+            : undefined
+      alignMessage(messageID, Math.max(0, y))
+    }
+    if (cell.row >= hidden() && cell.row < visibleEnd()) {
+      align()
+      return
+    }
+    revealingMarkers = true
+    scroll.stickyScroll = false
+    setHiddenRows(Math.max(0, cell.row - TRANSCRIPT_BACKFILL_CHUNK))
+    setVisibleRowsEnd(Math.min(rows.length, cell.row + TRANSCRIPT_BACKFILL_CHUNK))
+    updateAwayFromBottom()
+    afterLayout(() => {
+      revealingMarkers = false
+      align()
+      updateAwayFromBottom()
+    })
+  }
 
   function toBottom() {
     clearMessageNavigation()
@@ -1385,7 +1490,7 @@ export function Session(props: {
           minHeight={0}
           paddingBottom={1}
           paddingLeft={dimensions().width < 44 ? 1 : 2}
-          paddingRight={dimensions().width < 44 ? 1 : 2}
+          paddingRight={(dimensions().width < 44 ? 1 : 2) - (showMarkerColumn() ? 1 : 0)}
         >
           <Show when={session()}>
             <box flexGrow={1} minHeight={0} position="relative">
@@ -1393,8 +1498,10 @@ export function Session(props: {
                 ref={(r) => {
                   scroll = r
                   props.scrollRef?.(r)
-                  scroll.verticalScrollBar.on("change", updateAwayFromBottom)
-                  scroll.content.on("resize", holdAnchor)
+                  scroll.verticalScrollBar.on("change", onScrollbarChange)
+                  scroll.content.on("resize", onContentResize)
+                  refreshMarkers()
+                  queueMicrotask(refreshMarkers)
                 }}
                 viewportOptions={{
                   paddingRight: showScrollbar() ? 1 : 0,
@@ -1531,6 +1638,21 @@ export function Session(props: {
             </box>
           </Show>
         </box>
+        <Show when={showMarkerColumn()}>
+          <ScrollbarMarkers
+            cells={markerCells()}
+            color={(kind) =>
+              markerColor(kind, {
+                agentAccent:
+                  local.agent.accent(data.session.get(route.sessionID)?.agent ?? "build") ?? theme.marker.prompt,
+                thinking: theme.marker.thinking,
+                info: theme.marker.tool,
+                responseNeutral: theme.marker.response,
+              })
+            }
+            onJump={jumpToRow}
+          />
+        </Show>
       </box>
     </context.Provider>
   )

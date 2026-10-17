@@ -49,6 +49,12 @@ export type ResolvedThemeTokens = {
   }
   readonly border: { readonly base: RGBA }
   readonly scrollbar: { readonly base: RGBA }
+  readonly marker: {
+    readonly prompt: RGBA
+    readonly thinking: RGBA
+    readonly tool: RGBA
+    readonly response: RGBA
+  }
   readonly diff: {
     readonly text: {
       readonly added: RGBA

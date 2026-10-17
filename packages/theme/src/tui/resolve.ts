@@ -86,6 +86,7 @@ function tokens(definition: ThemeDefinition): ThemeTokensDefinition {
     background: definition.background,
     border: definition.border,
     scrollbar: definition.scrollbar,
+    marker: definition.marker,
     diff: definition.diff,
     syntax: definition.syntax,
     markdown: definition.markdown,

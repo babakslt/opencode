@@ -1,5 +1,5 @@
 import type { Renderable } from "@opentui/core"
-import type { PartRef, SessionEntry, SessionNode } from "./grouping/session"
+import type { PartRef, SessionEntry, SessionNode, SessionRow } from "./grouping/session"
 
 export type AnchorTarget = { type: "part"; ref: PartRef } | { type: "group"; groupID: string }
 
@@ -25,6 +25,16 @@ export function entryRef(entry: SessionEntry): PartRef | undefined {
 export function groupID(node: Extract<SessionNode, { type: "group" }>, level: number) {
   const ref = firstRef(node.children)
   return ref && JSON.stringify([ref.messageID, ref.partID, node.kind, level])
+}
+
+/** The anchor a row registers, whether it is an entry or a group header. Derived rows have none. */
+export function rowAnchorTarget(row: SessionRow): AnchorTarget | undefined {
+  if (row.type === "group") {
+    const id = groupID(row, 0)
+    return id ? { type: "group", groupID: id } : undefined
+  }
+  const ref = entryRef(row)
+  return ref ? { type: "part", ref } : undefined
 }
 
 function firstRef(nodes: readonly SessionNode[]): PartRef | undefined {

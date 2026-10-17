@@ -97,6 +97,12 @@
     "scrollbar": {
       "base": "#606060"
     },
+    "marker": {
+      "prompt": "$hue.accent.200",
+      "thinking": "$text.feedback.warning.base",
+      "tool": "$hue.purple.400",
+      "response": "$hue.neutral.600"
+    },
     "diff": {
       "text": {
         "added": "#4fd6be",

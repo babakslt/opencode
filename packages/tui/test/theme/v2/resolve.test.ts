@@ -10,7 +10,7 @@ import {
   type ResolvedTheme,
   type ThemeDefinition,
 } from "@opencode/theme/tui"
-import { getOpenCodeTheme, parseTheme, type ThemeDocumentSource } from "../../../src/theme"
+import { DEFAULT_THEMES, getOpenCodeTheme, parseTheme, type ThemeDocumentSource } from "../../../src/theme"
 
 const opencodeLight = selectTheme(getOpenCodeTheme(), "light")
 const opencodeDark = selectTheme(getOpenCodeTheme(), "dark")
@@ -160,6 +160,27 @@ test("resolves independent definitions and hue aliases", () => {
   expect(dialog.text.action.primary.base.equals(lightTheme.text.action.primary.base)).toBeTrue()
   expect(dialog.surface("dialog")).toBe(dialog)
   expect(darkTheme.surface("dialog").background.base).toBe(darkTheme.background.raised.base)
+})
+
+test("resolves marker roles to the colors the marker column used before they existed", () => {
+  for (const theme of [resolveTheme(light), resolveTheme(dark)]) {
+    expect(theme.marker.thinking.toInts()).toEqual(theme.text.feedback.warning.base.toInts())
+    expect(theme.marker.tool.toInts()).toEqual(theme.text.feedback.info.base.toInts())
+    expect(theme.marker.response.toInts()).toEqual(theme.decrease(theme.background.raised.base).toInts())
+    expect(theme.marker.prompt.toInts()).toEqual(theme.hue.accent[200].toInts())
+  }
+})
+
+test("falls back to marker defaults for a migrated custom theme", () => {
+  const nord = DEFAULT_THEMES.nord
+  if (!nord) throw new Error("Expected the built-in nord theme")
+  for (const mode of ["light", "dark"] as const) {
+    const theme = resolveThemeDocument(parseTheme(nord, "nord"), mode)
+    expect(theme.marker.thinking.toInts()).toEqual(theme.text.feedback.warning.base.toInts())
+    expect(theme.marker.tool.toInts()).toEqual(theme.text.feedback.info.base.toInts())
+    expect(theme.marker.response.toInts()).toEqual(theme.decrease(theme.background.raised.base).toInts())
+    expect(theme.marker.prompt.toInts()).toEqual(theme.hue.accent[200].toInts())
+  }
 })
 
 test("resolves base hue aliases and rejects circular hue aliases", () => {

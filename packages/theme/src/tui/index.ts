@@ -21,6 +21,7 @@ export {
   type DiffDefinition,
   type FormfieldColorDefinition,
   type HueDefinition,
+  type MarkerDefinition,
   type Mode,
   type SemanticHue,
   type StatefulColorDefinition,
